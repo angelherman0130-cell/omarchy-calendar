@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import qs.Commons
@@ -72,6 +73,52 @@ Panel {
   readonly property string nextWeekStartLabel: labelLocale.dayName(Model.toggledWeekStart(weekStart), Locale.LongFormat)
   readonly property var weekdays: Model.weekdayOrder(weekStart)
   readonly property var weeks: Model.monthGrid(viewYear, viewMonth, weekStart, todayKey)
+
+  // ---- Cronos task creation. Clicking a day turns the popup into a quick-add
+  //      form backed by Cronos' own service, so tasks get the same ids, tags,
+  //      reminder rules and atomic writes as if they were added there. Zero
+  //      files are touched from here: Cronos does the persistence.
+  readonly property var cronosService: bar && bar.shell && typeof bar.shell.serviceFor === "function"
+    ? bar.shell.serviceFor("angelherman.cronos")
+    : null
+  readonly property bool cronosAvailable: root.cronosService !== null && root.cronosService !== undefined
+
+  property string selectedKey: ""
+  readonly property date selectedDate: {
+    var m = String(root.selectedKey).match(/^(\d{4})-(\d{2})-(\d{2})$/)
+    if (!m) return new Date()
+    var d = new Date(+m[1], +m[2] - 1, +m[3])
+    return isNaN(d.getTime()) ? new Date() : d
+  }
+
+  property string titleText: ""
+  property string notesText: ""
+  property string tagsText: ""
+  property string taskTime: ""
+  property string leadValue: "0"
+  property string leadMode: "exact"
+  property string customLeadValue: ""
+  property string customLeadUnit: "h"
+  property string taskCard: ""
+  property string taskNotice: ""
+
+  readonly property var taskTimePresets: [
+    "07:00", "09:00", "12:00", "15:00", "18:00", "21:00", "23:59"
+  ]
+
+  readonly property var taskLeadPresets: [
+    { value: "0",   label: "At deadline", mode: "exact" },
+    { value: "1",   label: "1 h",         mode: "exact" },
+    { value: "3",   label: "3 h",         mode: "exact" },
+    { value: "6",   label: "6 h",         mode: "exact" },
+    { value: "12",  label: "12 h",        mode: "exact" },
+    { value: "24",  label: "1 day",       mode: "day" },
+    { value: "48",  label: "2 days",      mode: "day" },
+    { value: "72",  label: "3 days",      mode: "day" },
+    { value: "120", label: "5 days",      mode: "day" },
+    { value: "168", label: "1 week",      mode: "day" },
+    { value: "336", label: "2 weeks",     mode: "day" }
+  ]
 
   // ---- Cronos integration. The calendar popup reads the task list straight
   //      from the Cronos plugin's store, so any plugin that writes the same
@@ -275,6 +322,78 @@ Panel {
     return String(labelLocale.dayName(weekday, Locale.ShortFormat)).toUpperCase()
   }
 
+  // ---- quick-add form --------------------------------------------------
+
+  function pickTaskDate(key) {
+    root.selectedKey = root.selectedKey === key ? "" : key
+    root.taskNotice = ""
+    root.taskCard = ""
+  }
+
+  function toggleTaskCard(name) {
+    root.taskCard = root.taskCard === name ? "" : name
+    root.taskNotice = ""
+  }
+
+  function applyCustomLead() {
+    var n = Number(root.customLeadValue)
+    if (!isFinite(n) || n <= 0) {
+      root.taskNotice = "Enter a number greater than 0 in the custom reminder"
+      return
+    }
+    root.leadValue = String(root.customLeadUnit === "min" ? n / 60 : n)
+    root.leadMode = "exact"
+    root.taskCard = ""
+    root.taskNotice = ""
+  }
+
+  function leadLabelFor(hours) {
+    var h = Math.max(0, Number(hours) || 0)
+    if (h <= 0.001) return "at the deadline"
+    var totalMin = Math.round(h * 60)
+    if (totalMin < 60) return totalMin + " min"
+    if (totalMin % (24 * 60) === 0) {
+      var d = totalMin / (24 * 60)
+      return d === 1 ? "1 day" : d + " days"
+    }
+    var hh = Math.floor(totalMin / 60)
+    var mm = totalMin % 60
+    return mm === 0 ? (hh === 1 ? "1 h" : hh + " h") : hh + " h " + mm + " min"
+  }
+
+  function taskSummary() {
+    var s = "Due " + root.dueLabel(root.selectedKey)
+    if (root.taskTime) s += " · " + root.taskTime
+    s += " · reminder " + root.leadLabelFor(root.leadValue)
+    return s
+  }
+
+  function resetTaskForm() {
+    root.titleText = ""
+    root.notesText = ""
+    root.tagsText = ""
+    root.taskTime = ""
+    root.customLeadValue = ""
+    root.taskNotice = ""
+    root.taskCard = ""
+  }
+
+  function submitTask() {
+    var s = root.cronosService
+    if (!s) return
+    if (String(root.titleText).trim() === "" || root.selectedKey === "") {
+      root.taskNotice = "Check the title"
+      return
+    }
+    if (s.add(root.titleText, root.selectedKey, root.taskTime, root.leadValue,
+        root.notesText, root.leadMode, root.tagsText)) {
+      root.resetTaskForm()
+      cronosStore.reload()
+    } else {
+      root.taskNotice = "Could not add the task right now"
+    }
+  }
+
   SystemClock {
     id: clock
     precision: SystemClock.Minutes
@@ -301,6 +420,8 @@ Panel {
       id: keyCatcher
       anchors.fill: parent
       blocked: root.editingLife
+        || titleTask.activeFocus || notesTask.activeFocus || tagsTask.activeFocus
+        || taskTimeField.activeFocus || customLeadField.activeFocus
       onMoveRequested: function(dx, dy) {
         if (dx !== 0) root.moveMonth(dx)
         if (dy !== 0) root.moveYear(dy)
@@ -710,22 +831,35 @@ Panel {
 
                     Rectangle {
                       required property var modelData
+                      readonly property bool sel: modelData.key === root.selectedKey
 
                       width: root.cellWidth
                       height: root.cellHeight
                       radius: Style.cornerRadius
                       // Today is outlined, not filled: a lit-up block shouts
-                      // over a grid this quiet.
-                      color: "transparent"
-                      border.width: modelData.today ? Style.spacing.hairline : 0
-                      border.color: Style.normalBorderFor(root.contentForeground, Color.accent)
+                      // over a grid this quiet. A selected day (the quick-add
+                      // target) is filled with the same accent family.
+                      color: modelData.sel ? Style.selectedAccentFill : "transparent"
+                      border.width: modelData.sel ? 1 : (
+                        modelData.today ? Style.spacing.hairline : 0)
+                      border.color: modelData.sel
+                        ? Style.selectedBorderColor
+                        : (modelData.today ? Style.normalBorderFor(root.contentForeground, Color.accent) : "transparent")
+
+                      Rectangle {
+                        anchors.fill: parent
+                        radius: parent.radius
+                        visible: cellMouse.containsMouse && !parent.sel && modelData.inMonth
+                        color: Style.hoverFill
+                      }
 
                       Text {
                         textFormat: Text.PlainText
                         anchors.centerIn: parent
                         text: modelData.day
                         color: modelData.inMonth
-                          ? (modelData.weekend ? Qt.darker(root.contentForeground, 1.45) : root.contentForeground)
+                          ? (parent.sel ? Color.accent
+                            : (modelData.weekend ? Qt.darker(root.contentForeground, 1.45) : root.contentForeground))
                           : Qt.darker(root.contentForeground, 2.2)
                         font.family: root.contentFontFamily
                         font.pixelSize: Style.font.body
@@ -742,6 +876,25 @@ Panel {
                         anchors.bottomMargin: Style.space(2)
                         visible: root.taskDayMap.hasOwnProperty(modelData.key)
                         color: Color.accent
+                      }
+
+                      MouseArea {
+                        id: cellMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                          if (modelData.inMonth) root.pickTaskDate(modelData.key)
+                        }
+                      }
+
+                      PanelToolTip {
+                        visible: cellMouse.containsMouse && modelData.inMonth && root.cronosAvailable
+                        text: "Create a task on " + Qt.formatDate(
+                          new Date(Number(modelData.key.slice(0, 4)),
+                            Number(modelData.key.slice(5, 7)) - 1,
+                            Number(modelData.key.slice(8, 10))), "dddd d MMMM")
+                        fontFamily: root.contentFontFamily
                       }
                     }
                   }
@@ -815,6 +968,288 @@ Panel {
                 foreground: root.contentForeground
                 fontFamily: root.contentFontFamily
                 onClicked: root.moveMonth(1)
+              }
+            }
+          }
+
+          // ---- Quick add: clicking a day turns the popup into a task form
+          //      with the same options as Cronos (title, notes, tags, time,
+          //      presets and custom reminder). Tasks go through Cronos'
+          //      service, so they land in the same store with the same rules.
+          Item {
+            id: taskSection
+            visible: root.selectedKey !== "" && root.cronosAvailable
+            width: parent.width
+            height: visible ? taskColumn.y + taskColumn.height + Style.space(4) : 0
+
+            Column {
+              id: taskColumn
+              y: Style.space(14)
+              anchors.horizontalCenter: parent.horizontalCenter
+              width: gridColumn.width
+              spacing: Style.space(8)
+
+              Text {
+                textFormat: Text.PlainText
+                text: "NEW TASK · " + Qt.formatDate(root.selectedDate, "dddd d MMMM").toUpperCase()
+                color: Qt.darker(root.contentForeground, 1.5)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.letterSpacing: 1
+                font.bold: true
+              }
+
+              TextField {
+                id: titleTask
+                width: parent.width
+                placeholderText: "Task title"
+                foreground: root.contentForeground
+                font.family: root.contentFontFamily
+                text: root.titleText
+                onTextChanged: root.titleText = text
+                onAccepted: root.submitTask()
+              }
+
+              TextField {
+                id: notesTask
+                width: parent.width
+                placeholderText: "Description or notes (optional)"
+                foreground: root.contentForeground
+                font.family: root.contentFontFamily
+                text: root.notesText
+                onTextChanged: root.notesText = text
+              }
+
+              TextField {
+                id: tagsTask
+                width: parent.width
+                placeholderText: "Tags (comma separated, optional)"
+                foreground: root.contentForeground
+                font.family: root.contentFontFamily
+                text: root.tagsText
+                onTextChanged: root.tagsText = text
+              }
+
+              Row {
+                width: parent.width
+                spacing: Style.space(6)
+
+                Button {
+                  width: (parent.width - Style.space(6)) / 2
+                  text: "Time"
+                  foreground: root.contentForeground
+                  accent: Color.accent
+                  active: root.taskCard === "time"
+                  focusable: true
+                  onClicked: root.toggleTaskCard("time")
+                }
+
+                Button {
+                  width: (parent.width - Style.space(6)) / 2
+                  text: "Reminder"
+                  foreground: root.contentForeground
+                  accent: Color.accent
+                  active: root.taskCard === "reminder"
+                  focusable: true
+                  onClicked: root.toggleTaskCard("reminder")
+                }
+              }
+
+              Text {
+                textFormat: Text.PlainText
+                text: root.taskSummary()
+                color: Qt.darker(root.contentForeground, 1.45)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                elide: Text.ElideRight
+                width: parent.width
+              }
+
+              Rectangle {
+                visible: root.taskCard === "time"
+                width: parent.width
+                height: timeCardLayout.implicitHeight + Style.space(12)
+                radius: Style.cornerRadius
+                color: Color.popups.background
+                border.color: Qt.alpha(Color.accent, 0.4)
+                border.width: 1
+
+                Column {
+                  id: timeCardLayout
+                  width: parent.width - Style.space(24)
+                  anchors.centerIn: parent
+                  spacing: Style.space(6)
+
+                  Row {
+                    width: parent.width
+                    spacing: Style.space(6)
+
+                    TextField {
+                      id: taskTimeField
+                      width: parent.width - Style.space(100)
+                      placeholderText: "13:00"
+                      foreground: root.contentForeground
+                      font.family: root.contentFontFamily
+                      text: root.taskTime
+                      onTextChanged: root.taskTime = text
+                      onAccepted: root.taskCard = ""
+                    }
+
+                    Button {
+                      width: Style.space(94)
+                      text: "Clear"
+                      foreground: root.contentForeground
+                      accent: Color.accent
+                      onClicked: root.taskTime = ""
+                    }
+                  }
+
+                  GridLayout {
+                    width: parent.width
+                    columns: 4
+                    columnSpacing: Style.space(6)
+                    rowSpacing: Style.space(6)
+
+                    Repeater {
+                      model: root.taskTimePresets
+
+                      Button {
+                        Layout.fillWidth: true
+                        text: modelData
+                        foreground: root.contentForeground
+                        accent: Color.accent
+                        active: root.taskTime === modelData
+                        onClicked: root.taskTime = modelData
+                      }
+                    }
+                  }
+                }
+              }
+
+              Rectangle {
+                visible: root.taskCard === "reminder"
+                width: parent.width
+                height: leadCardLayout.implicitHeight + Style.space(12)
+                radius: Style.cornerRadius
+                color: Color.popups.background
+                border.color: Qt.alpha(Color.accent, 0.4)
+                border.width: 1
+
+                Column {
+                  id: leadCardLayout
+                  width: parent.width - Style.space(24)
+                  anchors.centerIn: parent
+                  spacing: Style.space(6)
+
+                  GridLayout {
+                    width: parent.width
+                    columns: 4
+                    columnSpacing: Style.space(6)
+                    rowSpacing: Style.space(6)
+
+                    Repeater {
+                      model: root.taskLeadPresets
+
+                      Button {
+                        Layout.fillWidth: true
+                        text: modelData.label
+                        foreground: root.contentForeground
+                        accent: Color.accent
+                        active: root.leadValue === modelData.value && root.leadMode === modelData.mode
+                        onClicked: {
+                          root.leadValue = modelData.value
+                          root.leadMode = modelData.mode
+                        }
+                      }
+                    }
+                  }
+
+                  Text {
+                    textFormat: Text.PlainText
+                    text: "Remind before the deadline"
+                    color: Qt.darker(root.contentForeground, 1.5)
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.bodySmall
+                    font.bold: true
+                  }
+
+                  Row {
+                    width: parent.width
+                    spacing: Style.space(6)
+
+                    TextField {
+                      id: customLeadField
+                      width: parent.width - Style.space(176)
+                      placeholderText: "Number"
+                      foreground: root.contentForeground
+                      font.family: root.contentFontFamily
+                      text: root.customLeadValue
+                      onTextChanged: root.customLeadValue = text
+                      onAccepted: root.applyCustomLead()
+                    }
+
+                    Button {
+                      width: Style.space(54)
+                      text: "min"
+                      foreground: root.contentForeground
+                      accent: Color.accent
+                      active: root.customLeadUnit === "min"
+                      onClicked: root.customLeadUnit = "min"
+                    }
+
+                    Button {
+                      width: Style.space(54)
+                      text: "h"
+                      foreground: root.contentForeground
+                      accent: Color.accent
+                      active: root.customLeadUnit === "h"
+                      onClicked: root.customLeadUnit = "h"
+                    }
+
+                    Button {
+                      width: Style.space(62)
+                      text: "Use"
+                      foreground: root.contentForeground
+                      accent: Color.accent
+                      onClicked: root.applyCustomLead()
+                    }
+                  }
+
+                  Text {
+                    textFormat: Text.PlainText
+                    text: "min = minutes before · h = hours before the deadline"
+                    color: Qt.darker(root.contentForeground, 1.9)
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.caption
+                    wrapMode: Text.WordWrap
+                    width: parent.width
+                  }
+                }
+              }
+
+              Row {
+                width: parent.width
+                spacing: Style.space(6)
+
+                Text {
+                  textFormat: Text.PlainText
+                  visible: root.taskNotice !== ""
+                  text: root.taskNotice
+                  color: Color.urgent
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.caption
+                  wrapMode: Text.WordWrap
+                  width: parent.width - Style.space(112)
+                }
+
+                Button {
+                  width: Style.space(106)
+                  text: "＋ Add"
+                  accent: Color.accent
+                  foreground: root.contentForeground
+                  focusable: true
+                  onClicked: root.submitTask()
+                }
               }
             }
           }
