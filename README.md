@@ -22,4 +22,4 @@ service needed.
 
 ## Screenshots
 
-Coming soon.
+![Cronos Calendar popup with task dots and agenda](docs/screenshot.png?v=1)
