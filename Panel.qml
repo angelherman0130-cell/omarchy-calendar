@@ -123,14 +123,47 @@ Panel {
     return Qt.formatDate(date, "dddd d MMMM")
   }
 
+  // Google-Calendar-style rows inside a day cell: the first two tasks as
+  // tinted chips (deadline-first), a "+N more" slot when the day overflows.
+  function toTaskRow(task) {
+    return {
+      title: task && task.title ? String(task.title) : "(untitled)",
+      overdue: Model.dueKey(task) < root.todayKey
+    }
+  }
+
+  function dayRows(key) {
+    var list = (root.taskDayMap[key] || []).slice()
+    list.sort(function(a, b) {
+      var ka = Model.dueKey(a)
+      var kb = Model.dueKey(b)
+      if (ka < kb) return -1
+      if (ka > kb) return 1
+      var ta = a && a.title ? String(a.title) : ""
+      var tb = b && b.title ? String(b.title) : ""
+      if (ta < tb) return -1
+      if (ta > tb) return 1
+      return 0
+    })
+    var cap = 3
+    var out = []
+    if (list.length > cap) {
+      for (var i = 0; i < cap - 1; i++) out.push(root.toTaskRow(list[i]))
+      out.push({ more: list.length - (cap - 1) })
+    } else {
+      for (var j = 0; j < list.length; j++) out.push(root.toTaskRow(list[j]))
+    }
+    return out
+  }
+
 
   // Guarded so the widget renders before the bar is injected (the bar-widget
   // contract instantiates it bare).
   readonly property color contentForeground: bar ? bar.foreground : Color.foreground
   readonly property string contentFontFamily: bar ? bar.fontFamily : Style.font.family
 
-  readonly property int cellWidth: Style.space(52)
-  readonly property int cellHeight: Style.space(34)
+  readonly property int cellWidth: Style.space(66)
+  readonly property int cellHeight: Style.space(56)
   readonly property int cellSpacing: Style.space(2)
   readonly property int weekColumnWidth: Style.space(32)
   readonly property int gutterWidth: Style.space(14)
@@ -714,34 +747,96 @@ Panel {
                       width: root.cellWidth
                       height: root.cellHeight
                       radius: Style.cornerRadius
+                      clip: true
                       // Today is outlined, not filled: a lit-up block shouts
                       // over a grid this quiet.
                       color: "transparent"
                       border.width: modelData.today ? Style.spacing.hairline : 0
                       border.color: Style.normalBorderFor(root.contentForeground, Color.accent)
 
+                      // Day number, top-left, like a page of a planner.
                       Text {
                         textFormat: Text.PlainText
-                        anchors.centerIn: parent
+                        anchors.top: parent.top
+                        anchors.topMargin: Style.space(2)
+                        anchors.left: parent.left
+                        anchors.leftMargin: Style.space(4)
                         text: modelData.day
                         color: modelData.inMonth
                           ? (modelData.weekend ? Qt.darker(root.contentForeground, 1.45) : root.contentForeground)
                           : Qt.darker(root.contentForeground, 2.2)
                         font.family: root.contentFontFamily
-                        font.pixelSize: Style.font.body
+                        font.pixelSize: Style.font.bodySmall
                         font.bold: modelData.today
                       }
 
-                      // Days carrying open Cronos tasks get an accent dot.
-                      Rectangle {
-                        width: Style.space(3)
-                        height: Style.space(3)
-                        radius: width / 2
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        anchors.bottom: parent.bottom
-                        anchors.bottomMargin: Style.space(2)
-                        visible: root.taskDayMap.hasOwnProperty(modelData.key)
-                        color: Color.accent
+                      // Cronos tasks as tinted chips, Google-Calendar style.
+                      Column {
+                        width: parent.width
+                        anchors.top: parent.top
+                        anchors.topMargin: Style.space(17)
+                        anchors.leftMargin: Style.space(3)
+                        anchors.rightMargin: Style.space(3)
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        spacing: Style.space(1)
+
+                        Repeater {
+                          model: root.dayRows(modelData.key)
+
+                          Item {
+                            required property var modelData
+                            readonly property bool isMore: modelData.more !== undefined
+
+                            width: parent.width
+                            height: Style.space(11)
+
+                            Rectangle {
+                              visible: !parent.isMore
+                              anchors.fill: parent
+                              radius: Math.max(2, Style.cornerRadius - 2)
+                              color: modelData.overdue
+                                ? Qt.rgba(Color.urgent.r, Color.urgent.g, Color.urgent.b, 0.18)
+                                : Qt.rgba(Color.accent.r, Color.accent.g, Color.accent.b, 0.16)
+                            }
+
+                            Rectangle {
+                              visible: !parent.isMore
+                              anchors.verticalCenter: parent.verticalCenter
+                              x: Style.space(3)
+                              width: Style.space(3)
+                              height: Style.space(3)
+                              radius: width / 2
+                              color: modelData.overdue ? Color.urgent : Color.accent
+                            }
+
+                            Text {
+                              visible: !parent.isMore
+                              anchors.verticalCenter: parent.verticalCenter
+                              x: Style.space(8)
+                              width: parent.width - Style.space(11)
+                              textFormat: Text.PlainText
+                              elide: Text.ElideRight
+                              text: modelData.title
+                              color: modelData.overdue
+                                ? Qt.darker(Color.urgent, 1.15)
+                                : Qt.darker(Color.accent, 1.05)
+                              font.family: root.contentFontFamily
+                              font.pixelSize: Style.font.caption
+                            }
+
+                            Text {
+                              visible: parent.isMore
+                              anchors.verticalCenter: parent.verticalCenter
+                              x: Style.space(8)
+                              textFormat: Text.PlainText
+                              text: "+" + modelData.more + " more"
+                              color: Qt.darker(root.contentForeground, 1.7)
+                              font.family: root.contentFontFamily
+                              font.pixelSize: Style.font.caption
+                            }
+                          }
+                        }
                       }
                     }
                   }

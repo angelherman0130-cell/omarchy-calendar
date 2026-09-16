@@ -2,13 +2,15 @@
 
 > **Companion plugin for [Cronos](https://github.com/angelherman0130-cell/omarchy-cronos).**
 > Install Cronos first (the task manager), then this calendar reads its tasks.
-> They are designed to work as a pair — no Cronos, no dots or task list.
+> They are designed to work as a pair — no Cronos, no task rows.
 
 Bar widget for Omarchy cloned from `omarchy.clock`: a date/time label (weekday
-and time) that opens a month calendar popup. Days that carry pending
-[Cronos](https://github.com/angelherman0130-cell/omarchy-cronos) tasks get an
-accent dot, and the next tasks are listed under "CRONOS TASKS" with "Today" /
-"Tomorrow" / full-date labels, overdue ones in red.
+and time) that opens a month calendar popup. Your pending
+[Cronos](https://github.com/angelherman0130-cell/omarchy-cronos) tasks are shown
+**inside their day's cell** like a Google Calendar month view — the day number
+up top, then the tasks as tinted chips (soonest deadline first, overdue in
+red, "+N more" when a day overflows). The next tasks are also listed on the
+"CRONOS TASKS" agenda below with "Today" / "Tomorrow" / full-date labels.
 
 Keeps everything from the Omarchy clock: ISO week numbers, week-start toggle
 ("W" heading), month stepping (chevrons, scroll wheel, keyboard), year
@@ -30,4 +32,4 @@ service needed.
 
 ## Screenshots
 
-![Cronos Calendar popup with task dots and agenda](docs/screenshot.png?v=1)
+![Cronos Calendar popup with tasks inside each day](docs/screenshot.png?v=1)
