@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "angelherman.clock",
+  "name": "Cronos Calendar",
+  "version": "1.0.0",
+  "author": "Angel Herman",
+  "description": "Date/time label with a calendar popup that shows Cronos tasks on their due days",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Cronos Calendar",
+    "description": "Date/time label with a calendar popup that shows Cronos tasks on their due days",
+    "category": "Time",
+    "allowMultiple": false
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.clock"
+  }
+}
