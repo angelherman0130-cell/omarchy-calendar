@@ -10,12 +10,6 @@ and time) that opens a month calendar popup. Days that carry pending
 accent dot, and the next tasks are listed under "CRONOS TASKS" with "Today" /
 "Tomorrow" / full-date labels, overdue ones in red.
 
-Click any day and the popup becomes a quick-add form with Cronos' own options —
-title, notes, tags, deadline time (presets or custom) and the reminder set
-(presets from "At deadline" to "2 weeks", plus a custom number in minutes or
-hours). Tasks go straight through the Cronos service into its store, so they
-appear in the Cronos panel with every rule intact.
-
 Keeps everything from the Omarchy clock: ISO week numbers, week-start toggle
 ("W" heading), month stepping (chevrons, scroll wheel, keyboard), year
 progress rail and the memento-mori bar.
