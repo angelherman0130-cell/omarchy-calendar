@@ -145,7 +145,7 @@ Panel {
       if (ta > tb) return 1
       return 0
     })
-    var cap = 3
+    var cap = 5
     var out = []
     if (list.length > cap) {
       for (var i = 0; i < cap - 1; i++) out.push(root.toTaskRow(list[i]))
@@ -163,7 +163,7 @@ Panel {
   readonly property string contentFontFamily: bar ? bar.fontFamily : Style.font.family
 
   readonly property int cellWidth: Style.space(66)
-  readonly property int cellHeight: Style.space(56)
+  readonly property int cellHeight: Style.space(80)
   readonly property int cellSpacing: Style.space(2)
   readonly property int weekColumnWidth: Style.space(32)
   readonly property int gutterWidth: Style.space(14)
